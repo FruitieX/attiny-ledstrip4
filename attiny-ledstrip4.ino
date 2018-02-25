@@ -5,15 +5,15 @@
 #define DATA_PIN 4
 
 // Color dots
-#define MAX_DOTS 18 // Try lowering if you experience crashes (out of memory)
+#define MAX_DOTS 15 // Try lowering if you experience crashes (out of memory)
 #define MIN_VELOCITY 3
 #define MAX_VELOCITY 7
-#define VELOCITY_DIVISOR 1
 #define TRAIL_LENGTH 8
-#define SPAWN_RATE 10000000 // Chance every frame (out of 2,147,483,647) that a new dot is spawned.
+//#define SPAWN_RATE 10000000 // Chance every frame (out of 2,147,483,647) that a new dot is spawned.
+#define SPAWN_RATE 1
 
 // Color
-#define HUE_VELOCITY 100 // Larger means slower (increment every X frames)
+//#define HUE_VELOCITY 100 // Larger means slower (increment every X frames)
 #define COLOR_JITTER 35
 #define COLOR_WHEEL_SPLITS 3
 #define SATURATION 160
@@ -21,12 +21,13 @@
 //#define VALUE 200
 #define COLOR_CORRECTION TypicalSMD5050
 //#define COLOR_CORRECTION 0xAF70FF
+#define DITHER_TRESHOLD 42
 
 // Power limiter
 // #define MAX_MA 2000
 
 CRGB leds[NUM_LEDS];
-long counter = 0;
+uint8_t counter = 0;
 uint8_t hue = 0;
 
 struct dot {
@@ -61,7 +62,7 @@ void spawn_dot() {
 }
 void init_dot(dot d) {
   d.active = false;
-  d.pos = -256;
+  d.pos = 0;
   d.velocity = 0;
   d.dir = 1;
 }
@@ -71,7 +72,7 @@ void setup() {
   FastLED.addLeds<WS2812B, DATA_PIN, GRB>(leds, NUM_LEDS).setCorrection(COLOR_CORRECTION);
   //FastLED.setMaxPowerInVoltsAndMilliamps(5, MAX_MA);
 
-  hue = random(256);
+  hue = random8();
 
   for (int i = 0; i < MAX_DOTS; i++) {
     init_dot(dots[i]);
@@ -83,17 +84,19 @@ void setup() {
 void loop() {
   counter++;
 
-  if (counter % HUE_VELOCITY == 0) {
+  if (counter % 128 == 0) {
     //hue = (hue + 1) % 256;
     hue++;
   }
 
-  if (random() < SPAWN_RATE) {
+  if (random8() < 1) {
     spawn_dot();
   }
 
   // Clear out all leds
   fill_solid(leds, NUM_LEDS, CRGB::Black);
+
+  //uint8_t dither = random(DITHER_TRESHOLD);
 
   // Loop through each dot
   for (int i = 0; i < MAX_DOTS; i++) {
@@ -102,9 +105,9 @@ void loop() {
     }
     
     // Dot movement
-    if (counter % VELOCITY_DIVISOR == 0) {
+    //if (counter % VELOCITY_DIVISOR == 0) {
       dots[i].pos += dots[i].dir * dots[i].velocity;
-    }
+    //}
     
     // Convert subpixel pos to pixel pos
     int dot_pos = dots[i].pos / 256;
@@ -131,16 +134,29 @@ void loop() {
       if (trail_pos >= 0 && trail_pos < NUM_LEDS) {
         trail_was_in_bounds = true;
 
-        CHSV temp = dots[i].color;
+        uint8_t value;
 
         if (!j) {
           // Fade in first led
-          temp.v = sub_dot_pos;
+          value = sub_dot_pos;
         } else {
           // Fade out other leds in the trail
-          temp.v = 255 - ((j - 1) * 255 + sub_dot_pos) / TRAIL_LENGTH;
-          temp.v = ease8InOutQuad(temp.v);
+          value = 255 - ((j - 1) * 255 + sub_dot_pos) / TRAIL_LENGTH;
+          value = ease8InOutApprox(value);
         }
+
+/*
+        if (value < 255) {
+          value += dither;
+        }
+        */
+        if (value < DITHER_TRESHOLD) {
+          value = 0;
+          //value = counter % (DITHER_TRESHOLD / 3) < value / 3 ? DITHER_TRESHOLD : 0;
+        }
+        
+        CHSV temp = dots[i].color;
+        temp.v = value;
        
         leds[trail_pos] += temp;
       }
